@@ -171,66 +171,66 @@ export default class Home extends React.Component {
                     (res) => res.key === selectedQuality
                 );
                 if (!selectedResolution) {
-                    throw new Error("Selected resolution not found.");
+                    this.update({
+                        loading: false,
+                        error: "Selected resolution not found.",
+                    });
+                    return;
                 }
 
                 const video_link = selectedResolution.url;
                 console.log("video_link", video_link);
-                if (!video_link) throw new Error("Video link not found.");
+                if (!video_link) {
+                    this.update({
+                        loading: false,
+                        error: "Video link not found.",
+                    });
+                    return;
+                }
 
-                const audio_link = extractAudioLink(resourceStr);
+                let audio_link = null;
+                try {
+                    audio_link = extractAudioLink(resourceStr);
+                } catch (e) {
+                    // No audio found, not an error
+                    audio_link = null;
+                }
                 console.log("audio_link", audio_link);
-                if (!audio_link) throw new Error("Audio link not found.");
 
                 const getContentLength = (length) =>
                     this.update({
                         contentLength: length + this.state.contentLength,
                     });
-                const progress = ({ value }) =>
-                    this.update({
-                        chunkSize: this.state.chunkSize + value.byteLength,
-                    });
 
-                const handleError = (error) =>
-                    this.update({
-                        contentLength: 0,
-                        chunkSize: 0,
-                        loading: false,
-                        error: error.message,
-                        controller: null,
-                    });
-
-                const data = await this.mergeVideo(video_link, audio_link, {
-                    getContentLength,
-                    progress,
-                    handleError,
-                    controller,
-                    proxy: this.state.proxy,
-                });
-
-                if (!this.state.error) {
-                    const videoSrc = URL.createObjectURL(
-                        new Blob([data.buffer], { type: "video/mp4" })
-                    );
-
-                    this.deleteFiles();
-
-                    this.update({
-                        videoSrc,
-                        loading: false,
-                        chunkSize: 0,
-                        contentLength: 0,
+                let fileData;
+                if (audio_link) {
+                    // Download and merge video and audio
+                    fileData = await this.mergeVideo(video_link, audio_link, {
+                        getContentLength,
+                        controller,
+                        proxy: this.state.proxy,
                     });
                 } else {
-                    this.update({
-                        loading: false,
-                        chunkSize: 0,
-                        contentLength: 0,
+                    // Only download video, no merging
+                    fileData = await fetchFile(video_link, {
+                        getContentLength,
+                        controller,
+                        proxy: this.state.proxy,
                     });
                 }
+
+                // Create a blob and set videoSrc
+                const blob = new Blob([fileData], { type: "video/mp4" });
+                const videoSrc = URL.createObjectURL(blob);
+                this.update({
+                    videoSrc,
+                    loading: false,
+                });
             } catch (error) {
-                console.error(error.message);
-                this.update({ error: error.message, loading: false });
+                this.update({
+                    error: error.message,
+                    loading: false,
+                });
             }
         }
     };

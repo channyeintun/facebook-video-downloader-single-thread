@@ -200,10 +200,6 @@ export function extractMediaUrls(htmlStr) {
         throw new Error("No video representations found");
     }
 
-    if (audioReps.length === 0) {
-        throw new Error("No audio representations found");
-    }
-
     // Sort video representations by bandwidth
     videoReps.sort((a, b) => a.bandwidth - b.bandwidth);
 
@@ -211,8 +207,8 @@ export function extractMediaUrls(htmlStr) {
     const sdVideo = videoReps[0];
     const hdVideo = videoReps[videoReps.length - 1];
 
-    // Get audio URL (there should be only one)
-    const audioUrl = solveCors(audioReps[0].base_url);
+    // If no audio, set audioUrl to null
+    const audioUrl = audioReps.length > 0 ? solveCors(audioReps[0].base_url) : null;
 
     const result = [
         {
@@ -343,12 +339,21 @@ export function extractAudioLink(str) {
     try {
         // Try new method first
         const mediaUrls = extractMediaUrls(str);
+        // If audioUrl is missing or null, return null
+        if (!mediaUrls[0].audioUrl) return null;
         return mediaUrls[0].audioUrl; // Both SD and HD use the same audio URL
     } catch (e) {
         console.warn("New extraction method failed, falling back to legacy method:", e);
 
         // Fallback to legacy method
-        const { audioId } = getIds(str);
+        let audioId = null;
+        try {
+            const ids = getIds(str);
+            audioId = ids.audioId;
+        } catch (err) {
+            // If no audioId found, return null (no audio in content)
+            return null;
+        }
         console.log("audioId:", audioId);
 
         // Clean the entire input string
@@ -368,8 +373,9 @@ export function extractAudioLink(str) {
             }
         }
 
+        // If no audioUrl found, return null (no audio in content)
         if (!audioUrl) {
-            throw new Error("No audio representation found for the specified audioId: " + audioId);
+            return null;
         }
 
         return solveCors(audioUrl);
