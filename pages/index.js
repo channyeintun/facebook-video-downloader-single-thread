@@ -275,6 +275,12 @@ export default class Home extends React.Component {
                                 <div className="header">
                                     <h1>Facebook Video Downloader</h1>
                                     <p className="subtitle">Download Facebook videos in HD quality with audio</p>
+                                    <div className="how-to-use">
+                                        <a href="https://youtu.be/v_JJgJc9KjM" target="_blank" rel="noopener noreferrer" className="youtube-link">
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{verticalAlign: 'middle', marginRight: '8px'}}><rect width="24" height="24" rx="12" fill="#FF0000"/><path d="M10 15.5V8.5L16 12L10 15.5Z" fill="white"/></svg>
+                                            How to use (YouTube)
+                                        </a>
+                                    </div>
                                 </div>
                                 
                                 <div className="input-section">
@@ -464,6 +470,29 @@ export default class Home extends React.Component {
                         font-size: 1.1rem;
                         opacity: 0.9;
                         margin: 0;
+                    }
+
+                    .how-to-use {
+                        margin-top: 1rem;
+                        text-align: center;
+                    }
+
+                    .youtube-link {
+                        display: inline-flex;
+                        align-items: center;
+                        color: #fff;
+                        background: #ff0000;
+                        padding: 0.5rem 1rem;
+                        border-radius: 8px;
+                        font-weight: 600;
+                        text-decoration: none;
+                        transition: background 0.2s;
+                        font-size: 1rem;
+                    }
+
+                    .youtube-link:hover {
+                        background: #c20000;
+                        color: #fff;
                     }
 
                     .input-section {
