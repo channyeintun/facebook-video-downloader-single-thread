@@ -23,7 +23,8 @@ export default class Home extends React.Component {
         chunkSize: 0,
         videoSrc: "",
         resourceStr: "",
-        resolutions: [],
+        videos: [],
+        selectedVideoKey: null,
         selectedQuality: "",
         loading: false,
         isLoaded: false,
@@ -33,7 +34,6 @@ export default class Home extends React.Component {
         error: "",
         controller: null,
         proxy: false,
-        thumbnail: null,
     };
 
     update = (newObj) => {
@@ -130,22 +130,20 @@ export default class Home extends React.Component {
 
     checkHDhandler = () => {
         try {
-            const links = extractVideoLinks(this.state.resourceStr);
-            const thumbnail = extractThumbnail(this.state.resourceStr);
-            
-            const resolutions = links.map((item, index) => ({
-                videoId: item.videoId,
-                qualityClass: item.qualityClass,
-                qualityLabel: item.qualityLabel || (item.qualityClass === "hd" ? "HD Quality" : "SD Quality"),
-                url: item.url,
-                key: item.key || `${item.qualityClass}_${index}`,
-            }));
-            
-            this.update({
-                resolutions,
-                thumbnail,
-                isModalVisible: true,
-            });
+            const videos = extractVideoLinks(this.state.resourceStr);
+            if (videos && videos.length > 0) {
+                this.update({
+                    videos,
+                    isModalVisible: true,
+                    selectedVideoKey: videos.length === 1 ? videos[0].key : null, // auto-select if only one video
+                    error: "",
+                });
+            } else {
+                this.update({
+                    error: "No videos found.",
+                    isModalVisible: false,
+                });
+            }
         } catch (error) {
             this.update({
                 error: error.message,
@@ -155,9 +153,9 @@ export default class Home extends React.Component {
     };
 
     extractLinkHandler = async () => {
-        const { resourceStr, selectedQuality, resolutions } = this.state;
+        const { videos, selectedVideoKey, selectedQuality } = this.state;
         const controller = new AbortController();
-        if (resourceStr && selectedQuality) {
+        if (videos && selectedVideoKey && selectedQuality) {
             try {
                 this.update({
                     loading: true,
@@ -166,36 +164,25 @@ export default class Home extends React.Component {
                     controller,
                 });
 
-                // Find the selected resolution
-                const selectedResolution = resolutions.find(
+                const selectedVideo = videos.find(v => v.key === selectedVideoKey);
+                if (!selectedVideo) {
+                    throw new Error("Selected video not found.");
+                }
+
+                const selectedResolution = selectedVideo.resolutions.find(
                     (res) => res.key === selectedQuality
                 );
+
                 if (!selectedResolution) {
-                    this.update({
-                        loading: false,
-                        error: "Selected resolution not found.",
-                    });
-                    return;
+                    throw new Error("Selected quality not found.");
                 }
 
                 const video_link = selectedResolution.url;
-                console.log("video_link", video_link);
-                if (!video_link) {
-                    this.update({
-                        loading: false,
-                        error: "Video link not found.",
-                    });
-                    return;
-                }
+                const audio_link = selectedVideo.audioUrl;
 
-                let audio_link = null;
-                try {
-                    audio_link = extractAudioLink(resourceStr);
-                } catch (e) {
-                    // No audio found, not an error
-                    audio_link = null;
-                }
+                console.log("video_link", video_link);
                 console.log("audio_link", audio_link);
+
 
                 const getContentLength = (length) =>
                     this.update({
@@ -204,14 +191,12 @@ export default class Home extends React.Component {
 
                 let fileData;
                 if (audio_link) {
-                    // Download and merge video and audio
                     fileData = await this.mergeVideo(video_link, audio_link, {
                         getContentLength,
                         controller,
                         proxy: this.state.proxy,
                     });
                 } else {
-                    // Only download video, no merging
                     fileData = await fetchFile(video_link, {
                         getContentLength,
                         controller,
@@ -219,7 +204,6 @@ export default class Home extends React.Component {
                     });
                 }
 
-                // Create a blob and set videoSrc
                 const blob = new Blob([fileData], { type: "video/mp4" });
                 const videoSrc = URL.createObjectURL(blob);
                 this.update({
@@ -235,13 +219,18 @@ export default class Home extends React.Component {
         }
     };
 
-    selectMedia = (e) => {
-        console.log('selectMedia called with:', e.target.value);
-        console.log('Current resolutions:', this.state.resolutions.length);
+    selectVideo = (videoKey) => {
         this.update({
-            selectedQuality: e.target.value,
+            selectedVideoKey: videoKey,
+            selectedQuality: "", // Reset quality selection when video changes
         });
-    };
+    }
+
+    selectQuality = (qualityKey) => {
+        this.update({
+            selectedQuality: qualityKey,
+        });
+    }
 
     hideModal = () => {
         this.update({
@@ -251,7 +240,7 @@ export default class Home extends React.Component {
 
     cleanVideo = () => {
         const videoSrc = this.state.videoSrc;
-        this.update({ videoSrc: "", resourceStr: "", resolutions: [], selectedQuality: "" });
+        this.update({ videoSrc: "", resourceStr: "", videos: [], selectedVideoKey: null, selectedQuality: "" });
         URL.revokeObjectURL(videoSrc);
     };
 
@@ -415,10 +404,11 @@ export default class Home extends React.Component {
                         <h2 className="modal-title">Select Video Quality</h2>
                         <p className="modal-subtitle">Choose the quality you want to download</p>
                         <MediaOptions
-                            resolutions={this.state.resolutions}
-                            selectMedia={this.selectMedia}
+                            videos={this.state.videos}
+                            selectVideo={this.selectVideo}
+                            selectQuality={this.selectQuality}
+                            selectedVideoKey={this.state.selectedVideoKey}
                             selectedQuality={this.state.selectedQuality}
-                            thumbnail={this.state.thumbnail}
                         />
                         <div className="modal-footer">
                             <button onClick={this.hideModal} className="modal-button secondary">

@@ -175,100 +175,91 @@ export function extractJsonFromHtml(htmlStr) {
     throw new Error("Could not extract JSON data from HTML");
 }
 
-export function extractMediaUrls(htmlStr) {
-    let jsonData;
-
-    jsonData = extractJsonFromHtml(htmlStr);
-
-    if (!jsonData.extensions ||
-        !jsonData.extensions.all_video_dash_prefetch_representations ||
-        jsonData.extensions.all_video_dash_prefetch_representations.length === 0) {
-        throw new Error("No video representations found in the data");
-    }
-
-    const representations = jsonData.extensions.all_video_dash_prefetch_representations[0].representations;
-
-    if (!representations || representations.length === 0) {
-        throw new Error("No representations found");
-    }
-
-    // Separate video and audio representations
-    const videoReps = representations.filter(rep => rep.mime_type === "video/mp4");
-    const audioReps = representations.filter(rep => rep.mime_type === "audio/mp4");
-
-    if (videoReps.length === 0) {
-        throw new Error("No video representations found");
-    }
-
-    // Sort video representations by bandwidth
-    videoReps.sort((a, b) => a.bandwidth - b.bandwidth);
-
-    // Get SD (lowest bandwidth) and HD (highest bandwidth)
-    const sdVideo = videoReps[0];
-    const hdVideo = videoReps[videoReps.length - 1];
-
-    // If no audio, set audioUrl to null
-    const audioUrl = audioReps.length > 0 ? solveCors(audioReps[0].base_url) : null;
-
-    const result = [
-        {
-            type: "sd",
-            videoUrl: solveCors(sdVideo.base_url),
-            audioUrl: audioUrl
-        },
-        {
-            type: "hd",
-            videoUrl: solveCors(hdVideo.base_url),
-            audioUrl: audioUrl
-        }
-    ];
-
-    console.log("Extracted media URLs:", result);
-    return result;
-}
-
-export function extractThumbnail(htmlStr) {
-    let jsonData;
-    
-    try {
-        // First try to parse as direct JSON
-        jsonData = JSON.parse(htmlStr);
-    } catch (e) {
-        // If not direct JSON, try to extract from HTML
-        jsonData = extractJsonFromHtml(htmlStr);
-    }
-
-    // Try to find thumbnail from the data structure
-    if (jsonData.data && 
-        jsonData.data.video && 
-        jsonData.data.video.story && 
-        jsonData.data.video.story.attachments && 
-        jsonData.data.video.story.attachments.length > 0) {
-        
-        const media = jsonData.data.video.story.attachments[0].media;
-        if (media && media.preferred_thumbnail && media.preferred_thumbnail.image && media.preferred_thumbnail.image.uri) {
-            return media.preferred_thumbnail.image.uri;
-        }
-    }
-
-    // Fallback: try to find any video thumbnail in the JSON
-    const thumbnailPatterns = [
-        /preferred_thumbnail[^}]*image[^}]*uri["']\s*:\s*["']([^"']+)["']/,
-        /thumbnail[^}]*uri["']\s*:\s*["']([^"']+)["']/,
-        /image[^}]*uri["']\s*:\s*["']([^"']+)["']/
-    ];
-
-    const jsonStr = typeof htmlStr === 'string' ? htmlStr : JSON.stringify(jsonData);
-    
-    for (const pattern of thumbnailPatterns) {
-        const match = jsonStr.match(pattern);
-        if (match && match[1]) {
-            // Make sure it's a valid image URL
-            if (match[1].includes('fbcdn.net') && (match[1].includes('.jpg') || match[1].includes('.png'))) {
-                return match[1];
+export function extractThumbnail(htmlStr, jsonData, videoIndex = 0) {
+    if (!jsonData) {
+        try {
+            jsonData = JSON.parse(htmlStr);
+        } catch (e) {
+            try {
+                jsonData = extractJsonFromHtml(htmlStr);
+            } catch (e2) {
+                // Cannot parse JSON, fallback to regex on string
+                const thumbnailPatterns = [
+                    /preferred_thumbnail[^}]*image[^}]*uri["']\s*:\s*["']([^"']+)["']/,
+                    /thumbnail[^}]*uri["']\s*:\s*["']([^"']+)["']/,
+                    /image[^}]*uri["']\s*:\s*["']([^"']+)["']/
+                ];
+                const strToSearch = typeof htmlStr === 'string' ? htmlStr : JSON.stringify(htmlStr);
+                for (const pattern of thumbnailPatterns) {
+                    const match = strToSearch.match(pattern);
+                    if (match && match[1]) {
+                        if (match[1].includes('fbcdn.net') && (match[1].includes('.jpg') || match[1].includes('.png'))) {
+                            return match[1];
+                        }
+                    }
+                }
+                return null;
             }
         }
     }
+
+    try {
+        // Try to find thumbnail from the data structure for the specific video
+        if (jsonData.data &&
+            jsonData.data.video &&
+            jsonData.data.video.story &&
+            jsonData.data.video.story.attachments &&
+            jsonData.data.video.story.attachments.length > videoIndex) {
+
+            const media = jsonData.data.video.story.attachments[videoIndex].media;
+            if (media) {
+                if (media.preferred_thumbnail && media.preferred_thumbnail.image && media.preferred_thumbnail.image.uri) {
+                    return media.preferred_thumbnail.image.uri;
+                }
+                if (media.thumbnail_image && media.thumbnail_image.uri) {
+                    return media.thumbnail_image.uri;
+                }
+                if (media.image && media.image.uri) {
+                    return media.image.uri;
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Error extracting thumbnail from data block:", e);
+    }
+
+    // Fallback: Check for a thumbnail in the extensions data for the specific video
+    try {
+        if (jsonData.extensions &&
+            jsonData.extensions.all_video_dash_prefetch_representations &&
+            jsonData.extensions.all_video_dash_prefetch_representations.length > videoIndex) {
+            const videoRepData = jsonData.extensions.all_video_dash_prefetch_representations[videoIndex];
+            if (videoRepData.video_thumbnail && videoRepData.video_thumbnail.uri) {
+                return videoRepData.video_thumbnail.uri;
+            }
+        }
+    } catch (e) {
+        console.error("Error extracting thumbnail from extensions block:", e);
+    }
+
+
+    // Fallback: if no specific thumbnail, use the first one available on the page as a last resort.
+    try {
+        if (jsonData.data &&
+            jsonData.data.video &&
+            jsonData.data.video.story &&
+            jsonData.data.video.story.attachments &&
+            jsonData.data.video.story.attachments.length > 0) {
+
+            const media = jsonData.data.video.story.attachments[0].media;
+            if (media && media.preferred_thumbnail && media.preferred_thumbnail.image && media.preferred_thumbnail.image.uri) {
+                return media.preferred_thumbnail.image.uri;
+            }
+        }
+    } catch (e) {
+        console.error("Error extracting fallback thumbnail:", e);
+    }
+
 
     return null;
 }
@@ -287,85 +278,126 @@ export function getIds(resourceStr) {
     }
 }
 
-export function extractVideoLinks(str) {
+export function extractVideoLinks(htmlStr) {
+    let jsonData;
     try {
-        // Try new method first
-        const mediaUrls = extractMediaUrls(str);
-        return mediaUrls.map((media, index) => ({
-            videoId: `${media.type}_${index}`,
-            qualityClass: media.type,
-            url: media.videoUrl,
-            key: `${media.type}_${index}`
-        }));
-    } catch (e) {
-        console.warn("New extraction method failed, falling back to legacy method:", e);
+        jsonData = extractJsonFromHtml(htmlStr);
 
-        // Fallback to legacy method
-        const { videoId } = getIds(str);
-        console.log("videoId:", videoId);
+        if (!jsonData.extensions ||
+            !jsonData.extensions.all_video_dash_prefetch_representations ||
+            !jsonData.extensions.all_video_dash_prefetch_representations.length === 0) {
+            throw new Error("No video representations found in the data");
+        }
 
-        // Clean the entire input string
-        const cleaner = new Cleaner(str);
-        const cleanedStr = cleaner.clean().value;
+        const allVideosData = jsonData.extensions.all_video_dash_prefetch_representations;
+        const videos = [];
 
-        // Regex to match Representation blocks
-        const representationRegex = /<Representation\s+[^>]*id="(\d+v)"[^>]*FBQualityClass="([^"]+)"[^>]*FBQualityLabel="([^"]+)"[^>]*>[\s\S]*?<BaseURL>(https:\/\/[^<]+)<\/BaseURL>/g;
-        const representations = [];
-        let match;
+        for (let i = 0; i < allVideosData.length; i++) {
+            const videoData = allVideosData[i];
+            const representations = videoData.representations;
 
-        // Collect all representation matches
-        while ((match = representationRegex.exec(cleanedStr)) !== null) {
-            console.log("Match found:", match);
-            console.log("Video ID in match:", match[1]);
-            representations.push({
-                videoId: match[1],
-                qualityClass: match[2],
-                qualityLabel: match[3],
-                url: solveCors(match[4]),
-                key: `${match[2]}_${match[3]}_${representations.length}`
+            if (!representations || representations.length === 0) continue;
+
+            const videoReps = representations.filter(rep => rep.mime_type === "video/mp4");
+            const audioReps = representations.filter(rep => rep.mime_type === "audio/mp4");
+
+            if (videoReps.length === 0) continue;
+
+            videoReps.sort((a, b) => a.bandwidth - b.bandwidth);
+
+            const sdVideo = videoReps[0];
+            const hdVideo = videoReps[videoReps.length - 1];
+            const audioUrl = audioReps.length > 0 ? solveCors(audioReps[0].base_url) : null;
+            const thumbnail = extractThumbnail(htmlStr, jsonData, i);
+
+            videos.push({
+                videoId: `video_${i}`,
+                key: `video_${i}`,
+                thumbnail: thumbnail,
+                audioUrl: audioUrl,
+                resolutions: [{
+                    qualityClass: "sd",
+                    qualityLabel: "SD",
+                    url: solveCors(sdVideo.base_url),
+                    key: `video_${i}_sd`
+                }, {
+                    qualityClass: "hd",
+                    qualityLabel: "HD",
+                    url: solveCors(hdVideo.base_url),
+                    key: `video_${i}_hd`
+                }, ]
             });
         }
 
-        if (representations.length === 0) {
-            throw new Error("No video representations found");
+        if (videos.length > 0) {
+            console.log(`Extracted ${videos.length} videos.`);
+            return videos;
         }
 
-        console.log("result:", representations);
-        return representations;
+        throw new Error("No videos found with new method, trying legacy");
+
+    } catch (e) {
+        console.warn("New extraction method failed, falling back to legacy method:", e.message);
+
+        // Fallback to legacy method
+        let resolutions;
+        try {
+            const {
+                videoId
+            } = getIds(htmlStr);
+            const cleaner = new Cleaner(htmlStr);
+            const cleanedStr = cleaner.clean().value;
+            const representationRegex = /<Representation\s+[^>]*id="(\d+v)"[^>]*FBQualityClass="([^"]+)"[^>]*FBQualityLabel="([^"]+)"[^>]*>[\s\S]*?<BaseURL>(https:\/\/[^<]+)<\/BaseURL>/g;
+            const reps = [];
+            let match;
+            while ((match = representationRegex.exec(cleanedStr)) !== null) {
+                reps.push({
+                    videoId: match[1],
+                    qualityClass: match[2],
+                    qualityLabel: match[3],
+                    url: solveCors(match[4]),
+                });
+            }
+            if (reps.length === 0) throw new Error("No video representations found in legacy method");
+            resolutions = reps;
+        } catch (err) {
+            throw new Error(`Legacy video extraction failed: ${err.message}`);
+        }
+
+        const thumbnail = extractThumbnail(htmlStr, null, 0);
+        const audioUrl = extractAudioLink(htmlStr);
+
+        return [{
+            videoId: 'video_0',
+            key: 'video_0',
+            thumbnail: thumbnail,
+            audioUrl: audioUrl,
+            resolutions: resolutions.map((r, i) => ({ ...r,
+                key: r.key || `${r.qualityClass}_${r.qualityLabel}_${i}`
+            }))
+        }];
     }
 }
 
-export function extractAudioLink(str) {
-    try {
-        // Try new method first
-        const mediaUrls = extractMediaUrls(str);
-        // If audioUrl is missing or null, return null
-        if (!mediaUrls[0].audioUrl) return null;
-        return mediaUrls[0].audioUrl; // Both SD and HD use the same audio URL
-    } catch (e) {
-        console.warn("New extraction method failed, falling back to legacy method:", e);
 
-        // Fallback to legacy method
+export function extractAudioLink(str) {
+    // This function is now only for the legacy path of extractVideoLinks
+    try {
         let audioId = null;
         try {
             const ids = getIds(str);
             audioId = ids.audioId;
         } catch (err) {
-            // If no audioId found, return null (no audio in content)
-            return null;
+            return null; // No audio
         }
-        console.log("audioId:", audioId);
 
-        // Clean the entire input string
         const cleaner = new Cleaner(str);
         const cleanedStr = cleaner.clean().value;
 
-        // Regex to match audio Representation blocks
         const audioRegex = /<Representation\s+[^>]*id="(\d+a)"[^>]*mimeType="audio\/mp4"[^>]*>[\s\S]*?<BaseURL>(https:\/\/[^<]+)<\/BaseURL>/g;
         let match;
         let audioUrl = null;
 
-        // Find the audio representation matching the audioId
         while ((match = audioRegex.exec(cleanedStr)) !== null) {
             if (match[1] === audioId) {
                 audioUrl = match[2];
@@ -373,12 +405,12 @@ export function extractAudioLink(str) {
             }
         }
 
-        // If no audioUrl found, return null (no audio in content)
-        if (!audioUrl) {
-            return null;
-        }
+        if (!audioUrl) return null;
 
         return solveCors(audioUrl);
+    } catch (e) {
+        console.warn("Legacy audio extraction failed:", e);
+        return null;
     }
 }
 

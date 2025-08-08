@@ -1,56 +1,131 @@
-export function MediaOptions({ resolutions = [], selectMedia, selectedQuality, thumbnail }) {
-    console.log('MediaOptions rendered with:', { resolutions: resolutions.length, selectedQuality, thumbnail });
-    
+import React, { useState, useEffect, useRef } from 'react';
+
+export function MediaOptions({ videos = [], selectVideo, selectQuality, selectedVideoKey, selectedQuality }) {
+    const [focusedVideoIndex, setFocusedVideoIndex] = useState(-1);
+    const videoListRef = useRef(null);
+
+    useEffect(() => {
+        // Auto-focus the first video if none is selected and there are multiple videos
+        if (videos.length > 1 && !selectedVideoKey) {
+            setFocusedVideoIndex(0);
+        } else if (selectedVideoKey) {
+            const index = videos.findIndex(v => v.key === selectedVideoKey);
+            setFocusedVideoIndex(index);
+        } else {
+            setFocusedVideoIndex(-1);
+        }
+    }, [videos, selectedVideoKey]);
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (videos.length <= 1) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setFocusedVideoIndex(prev => (prev + 1) % videos.length);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setFocusedVideoIndex(prev => (prev - 1 + videos.length) % videos.length);
+            } else if (e.key === 'Enter' && focusedVideoIndex !== -1) {
+                e.preventDefault();
+                selectVideo(videos[focusedVideoIndex].key);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [videos, focusedVideoIndex, selectVideo]);
+
+    useEffect(() => {
+        // Scroll focused video into view
+        if (focusedVideoIndex !== -1 && videoListRef.current) {
+            const videoElement = videoListRef.current.children[focusedVideoIndex];
+            if (videoElement) {
+                videoElement.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest'
+                });
+            }
+        }
+    }, [focusedVideoIndex]);
+
+    const selectedVideo = videos.find(v => v.key === selectedVideoKey);
+
     return (
         <>
-            <div className="media-options">
-                {resolutions.length > 0 ? (
-                    <div className="media-container">
-                        {/* Single Thumbnail Preview */}
-                        <div className="thumbnail-section">
-                            {thumbnail ? (
-                                <img
-                                    src={thumbnail}
-                                    alt="Video Preview"
-                                    className="main-thumbnail"
-                                    loading="lazy"
-                                />
+            <div className="media-options-container">
+                {videos.length > 0 ? (
+                    <div className="content-wrapper">
+                        {videos.length > 1 && (
+                            <div className="video-list-container">
+                                <h4 className="list-title">Select a Video</h4>
+                                <div className="video-list" ref={videoListRef}>
+                                    {videos.map((video, index) => (
+                                        <div
+                                            key={video.key}
+                                            className={`video-item ${selectedVideoKey === video.key ? 'selected' : ''} ${focusedVideoIndex === index ? 'focused' : ''}`}
+                                            onClick={() => selectVideo(video.key)}
+                                            onMouseOver={() => setFocusedVideoIndex(index)}
+                                        >
+                                            <img
+                                                src={video.thumbnail || '/placeholder.png'}
+                                                alt={`Video ${index + 1} thumbnail`}
+                                                className="video-thumbnail"
+                                                onError={(e) => { e.target.onerror = null; e.target.src='/placeholder.png'; }}
+                                            />
+                                            <div className="video-info">
+                                                <span className="video-title">Video {index + 1}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="quality-selection-container">
+                            {selectedVideo ? (
+                                <div className="quality-controls">
+                                    <div className="main-thumbnail-container">
+                                        <img
+                                            src={selectedVideo.thumbnail || '/placeholder.png'}
+                                            alt="Selected video thumbnail"
+                                            className="main-thumbnail"
+                                            onError={(e) => { e.target.onerror = null; e.target.src='/placeholder.png'; }}
+                                        />
+                                    </div>
+                                    <h4 className="quality-title">Choose Quality</h4>
+                                    <div className="quality-buttons">
+                                        {selectedVideo.resolutions.map(res => (
+                                            <label
+                                                key={res.key}
+                                                className={`quality-option ${selectedQuality === res.key ? 'selected' : ''}`}
+                                                htmlFor={res.key}
+                                            >
+                                                <input
+                                                    id={res.key}
+                                                    type="radio"
+                                                    name="quality"
+                                                    onChange={() => selectQuality(res.key)}
+                                                    value={res.key}
+                                                    checked={selectedQuality === res.key}
+                                                    className="quality-input"
+                                                />
+                                                <div className="quality-button">
+                                                    <span className="quality-badge">{res.qualityLabel}</span>
+                                                    <span className="quality-description">{res.qualityLabel === "HD" ? "High Definition" : "Standard Definition"}</span>
+                                                </div>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
                             ) : (
-                                <div className="no-thumbnail">
-                                    <div className="thumbnail-placeholder">📹</div>
-                                    <span>No Preview Available</span>
+                                <div className="no-selection">
+                                    <div className="selection-icon">☝️</div>
+                                    <h3>{videos.length > 1 ? "Select a video to see options" : "No video selected"}</h3>
                                 </div>
                             )}
-                        </div>
-
-                        {/* Quality Selection Controls */}
-                        <div className="quality-controls">
-                            <h4 className="quality-title">Choose Quality:</h4>
-                            <div className="quality-buttons">
-                                {resolutions.map((res) => (
-                                    <label 
-                                        key={res.key} 
-                                        className={`quality-option ${selectedQuality === res.key ? 'selected' : ''}`}
-                                        htmlFor={res.key}
-                                    >
-                                        <input
-                                            id={res.key}
-                                            type="radio"
-                                            name="media"
-                                            onChange={selectMedia}
-                                            value={res.key}
-                                            checked={selectedQuality === res.key}
-                                            className="quality-input"
-                                        />
-                                        <div className="quality-button">
-                                            <span className="quality-badge">{res.qualityClass.toUpperCase()}</span>
-                                            <span className="quality-description">
-                                                {res.qualityClass === "hd" ? "High Definition" : "Standard Definition"}
-                                            </span>
-                                        </div>
-                                    </label>
-                                ))}
-                            </div>
                         </div>
                     </div>
                 ) : (
@@ -62,240 +137,167 @@ export function MediaOptions({ resolutions = [], selectMedia, selectedQuality, t
                 )}
             </div>
             <style jsx>{`
-                .media-options {
+                .media-options-container {
+                    max-height: 70vh;
+                    overflow-y: auto;
+                    padding: 0.5rem;
+                }
+                .content-wrapper {
+                    display: flex;
+                    gap: 1.5rem;
+                }
+                .video-list-container {
+                    flex: 1;
+                    min-width: 200px;
+                    max-width: 250px;
+                }
+                .list-title {
+                    text-align: center;
+                    font-size: 1.1rem;
+                    margin-bottom: 1rem;
+                    color: #4b5563;
+                }
+                .video-list {
                     max-height: 60vh;
                     overflow-y: auto;
-                    padding: 1rem;
-                    min-height: 200px;
+                    padding-right: 8px;
                 }
-
-                .media-container {
+                .video-item {
                     display: flex;
-                    flex-direction: column;
-                    gap: 1.5rem;
-                    max-width: 500px;
-                    margin: 0 auto;
-                }
-
-                .thumbnail-section {
-                    display: flex;
-                    justify-content: center;
                     align-items: center;
+                    gap: 1rem;
+                    padding: 0.75rem;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    transition: background-color 0.2s;
+                    border: 2px solid transparent;
                 }
-
-                .main-thumbnail {
-                    width: 100%;
-                    max-width: 400px;
-                    max-height: 250px;
-                    border-radius: 12px;
+                .video-item:hover {
+                    background-color: #f3f4f6;
+                }
+                .video-item.focused {
+                    border-color: #a5b4fc;
+                    background-color: #eef2ff;
+                }
+                .video-item.selected {
+                    background-color: #e0e7ff;
+                    border-color: #6366f1;
+                }
+                .video-thumbnail {
+                    width: 80px;
+                    height: 50px;
                     object-fit: cover;
-                    background: #f3f4f6;
-                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-                    transition: transform 0.3s ease, box-shadow 0.3s ease;
+                    border-radius: 4px;
+                    background-color: #e5e7eb;
                 }
-
-                .main-thumbnail:hover {
-                    transform: scale(1.02);
-                    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+                .video-info {
+                    font-weight: 500;
                 }
-
-                .no-thumbnail {
+                .quality-selection-container {
+                    flex: 2;
                     display: flex;
-                    flex-direction: column;
-                    align-items: center;
                     justify-content: center;
-                    width: 100%;
-                    max-width: 400px;
-                    height: 200px;
-                    background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
-                    border: 2px dashed #d1d5db;
-                    border-radius: 12px;
-                    color: #6b7280;
+                    align-items: center;
                 }
-
-                .thumbnail-placeholder {
-                    font-size: 3rem;
-                    margin-bottom: 0.5rem;
-                    opacity: 0.6;
-                }
-
-                .quality-controls {
-                    background: white;
-                    border-radius: 12px;
-                    padding: 1.5rem;
-                    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-                    border: 1px solid #e5e7eb;
-                }
-
-                .quality-title {
-                    margin: 0 0 1rem 0;
-                    font-size: 1.1rem;
-                    font-weight: 600;
-                    color: #374151;
+                .main-thumbnail-container {
+                    margin-bottom: 1.5rem;
                     text-align: center;
                 }
-
+                .main-thumbnail {
+                    max-width: 100%;
+                    max-height: 220px;
+                    border-radius: 12px;
+                    object-fit: cover;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                }
+                .quality-controls {
+                    width: 100%;
+                }
+                .quality-title {
+                    text-align: center;
+                    font-size: 1.1rem;
+                    margin-bottom: 1rem;
+                    color: #374151;
+                }
                 .quality-buttons {
                     display: flex;
-                    gap: 1rem;
                     justify-content: center;
+                    gap: 1rem;
                 }
-
                 .quality-option {
                     cursor: pointer;
-                    transition: all 0.2s ease;
                 }
-
                 .quality-input {
                     position: absolute;
                     opacity: 0;
-                    pointer-events: none;
                 }
-
                 .quality-button {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: 0.5rem;
                     padding: 1rem 1.5rem;
+                    border-radius: 8px;
                     border: 2px solid #e5e7eb;
-                    border-radius: 10px;
-                    background: white;
-                    transition: all 0.2s ease;
+                    background: #fff;
+                    text-align: center;
+                    transition: all 0.2s;
                     min-width: 120px;
                 }
-
                 .quality-option:hover .quality-button {
-                    border-color: #d1d5db;
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                    border-color: #c7d2fe;
                 }
-
+                .quality-option .quality-input:checked + .quality-button,
                 .quality-option.selected .quality-button {
                     border-color: #4f46e5;
-                    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-                    color: white;
+                    background-color: #eef2ff;
+                    color: #3730a3;
                     transform: translateY(-2px);
-                    box-shadow: 0 6px 20px rgba(79, 70, 229, 0.3);
+                    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.2);
                 }
-
                 .quality-badge {
-                    font-size: 1rem;
-                    font-weight: 700;
-                    letter-spacing: 0.5px;
+                    font-weight: 600;
                 }
-
                 .quality-description {
                     font-size: 0.8rem;
-                    font-weight: 500;
-                    text-align: center;
-                    opacity: 0.8;
-                    line-height: 1.2;
+                    color: #6b7280;
+                    margin-top: 0.25rem;
                 }
-
                 .quality-option.selected .quality-description {
-                    opacity: 0.9;
+                     color: #4f46e5;
                 }
-
-                .no-media {
+                .no-selection, .no-media {
                     text-align: center;
-                    padding: 3rem 2rem;
                     color: #6b7280;
                 }
-
-                .no-media-icon {
+                .selection-icon, .no-media-icon {
                     font-size: 3rem;
                     margin-bottom: 1rem;
                 }
 
-                .no-media h3 {
-                    color: #374151;
-                    margin: 0 0 0.5rem 0;
-                    font-size: 1.25rem;
-                }
-
-                .no-media p {
-                    margin: 0;
-                    line-height: 1.5;
-                }
-
-                /* Custom scrollbar */
-                .media-options::-webkit-scrollbar {
+                /* Scrollbar for video list */
+                .video-list::-webkit-scrollbar {
                     width: 6px;
                 }
-
-                .media-options::-webkit-scrollbar-track {
-                    background: #f1f5f9;
-                    border-radius: 3px;
-                }
-
-                .media-options::-webkit-scrollbar-thumb {
+                .video-list::-webkit-scrollbar-thumb {
                     background: #cbd5e1;
                     border-radius: 3px;
                 }
 
-                .media-options::-webkit-scrollbar-thumb:hover {
-                    background: #94a3b8;
-                }
-
                 @media (max-width: 768px) {
-                    .media-container {
+                    .content-wrapper {
+                        flex-direction: column;
+                    }
+                    .video-list-container {
                         max-width: 100%;
                     }
-
-                    .quality-controls {
-                        padding: 1rem;
+                    .video-list {
+                        display: flex;
+                        overflow-x: auto;
+                        overflow-y: hidden;
+                        padding-bottom: 10px;
+                        max-height: 120px;
                     }
-
-                    .quality-buttons {
+                    .video-item {
                         flex-direction: column;
-                        gap: 0.75rem;
-                    }
-
-                    .quality-button {
-                        flex-direction: row;
-                        justify-content: space-between;
-                        min-width: unset;
-                        width: 100%;
-                        padding: 0.875rem 1rem;
-                    }
-
-                    .quality-description {
-                        font-size: 0.75rem;
-                    }
-
-                    .main-thumbnail {
-                        max-height: 200px;
-                    }
-
-                    .no-thumbnail {
-                        height: 150px;
-                    }
-
-                    .thumbnail-placeholder {
-                        font-size: 2.5rem;
-                    }
-                }
-
-                @media (max-width: 480px) {
-                    .media-options {
-                        padding: 0.5rem;
-                    }
-
-                    .quality-controls {
-                        padding: 0.875rem;
-                    }
-
-                    .quality-title {
-                        font-size: 1rem;
-                    }
-
-                    .quality-button {
-                        padding: 0.75rem;
-                    }
-
-                    .quality-badge {
-                        font-size: 0.9rem;
+                        gap: 0.5rem;
+                        min-width: 120px;
                     }
                 }
             `}</style>
