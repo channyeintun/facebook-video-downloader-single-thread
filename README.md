@@ -3,6 +3,8 @@
 
 [![GPL 3.0 License](https://img.shields.io/badge/license-GPL%203.0-green)](https://github.com/channyeintun/facebook-video-downloader/blob/main/LICENSE) 
 
+Multi-threaded version is available now. See [here](https://github.com/channyeintun/facebook-video-downloader).
+
 All videos in your facebook can be downloaded in both standard definition and high definition qualities. Everything about downloading the video and audio only happens in the browser except when you enable the proxy.
 
 I have used FFMPEG Library with WASM
